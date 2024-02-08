@@ -537,6 +537,15 @@ namespace GMEPUtilities
                 .Parse(json)
                 .ToObject<List<Dictionary<string, Dictionary<string, object>>>>();
         }
+
+        public static string GetUnparsedJSONData(string path)
+        {
+            var dllPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var jsonPath = Path.Combine(dllPath, path);
+            var json = File.ReadAllText(jsonPath);
+
+            return json;
+        }
     }
 
     public class HelperMethods

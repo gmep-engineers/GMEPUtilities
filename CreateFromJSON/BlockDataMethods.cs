@@ -546,6 +546,62 @@ namespace GMEPUtilities
 
             return json;
         }
+
+        public static void CreateFilledCircleInPaperSpace(Point3d center, double radius)
+        {
+            Document acDoc = Autodesk
+                .AutoCAD
+                .ApplicationServices
+                .Application
+                .DocumentManager
+                .MdiActiveDocument;
+            Database acCurDb = acDoc.Database;
+
+            using (Transaction acTrans = acCurDb.TransactionManager.StartTransaction())
+            {
+                BlockTable acBlkTbl;
+                BlockTableRecord acBlkTblRec;
+
+                acBlkTbl = acTrans.GetObject(acCurDb.BlockTableId, OpenMode.ForRead) as BlockTable;
+                acBlkTblRec =
+                    acTrans.GetObject(acBlkTbl[BlockTableRecord.PaperSpace], OpenMode.ForWrite)
+                    as BlockTableRecord;
+
+                // Create a circle
+                using (Circle acCircle = new Circle())
+                {
+                    acCircle.Center = center;
+                    acCircle.Radius = radius;
+
+                    if (!LayerExists("E-CONDUIT"))
+                    {
+                        CreateLayer("E-CONDUIT", 4);
+                    }
+
+                    acCircle.Layer = "E-CONDUIT";
+
+                    acCircle.SetDatabaseDefaults();
+                    acBlkTblRec.AppendEntity(acCircle);
+                    acTrans.AddNewlyCreatedDBObject(acCircle, true);
+
+                    using (Hatch acHatch = new Hatch())
+                    {
+                        acBlkTblRec.AppendEntity(acHatch);
+                        acTrans.AddNewlyCreatedDBObject(acHatch, true);
+                        acHatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                        acHatch.Associative = true;
+                        acHatch.Layer = "E-CONDUIT";
+                        acHatch.AppendLoop(
+                            HatchLoopTypes.Outermost,
+                            new ObjectIdCollection() { acCircle.ObjectId }
+                        );
+                        acHatch.EvaluateHatch(true);
+                    }
+                }
+
+                acTrans.Commit();
+            }
+        }
     }
 
     public class HelperMethods

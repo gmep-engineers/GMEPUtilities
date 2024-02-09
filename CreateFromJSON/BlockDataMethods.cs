@@ -632,6 +632,53 @@ namespace GMEPUtilities
             File.WriteAllText(filePath, json);
         }
 
+        public static void SaveDataToJsonFileNoOverwrite(object data, string fileName)
+        {
+            var filePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                fileName
+            );
+
+            // Check if the file already exists
+            if (File.Exists(filePath))
+            {
+                // Get the file extension
+                string extension = Path.GetExtension(fileName);
+
+                // Get the file name without extension
+                string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+
+                // Initialize a counter
+                int counter = 1;
+
+                // Generate a new file name with a number appended
+                string newFileName = $"{fileNameWithoutExtension}_{counter}{extension}";
+
+                // Generate a new file path
+                filePath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                    newFileName
+                );
+
+                // Increment the counter until a unique file name is found
+                while (File.Exists(filePath))
+                {
+                    counter++;
+                    newFileName = $"{fileNameWithoutExtension}_{counter}{extension}";
+                    filePath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                        newFileName
+                    );
+                }
+            }
+
+            var json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                data,
+                Newtonsoft.Json.Formatting.Indented
+            );
+            File.WriteAllText(filePath, json);
+        }
+
         public static bool IsInModel()
         {
             if (

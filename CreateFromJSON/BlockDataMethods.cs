@@ -53,6 +53,10 @@ namespace GMEPUtilities
                         selectedPoint = CreateArc(ed, selectedPoint, objData);
                         break;
 
+                    case "ellipse":
+                        selectedPoint = CreateEllipse(ed, selectedPoint, objData);
+                        break;
+
                     default:
                         break;
                 }
@@ -245,6 +249,67 @@ namespace GMEPUtilities
                     ) as BlockTableRecord;
                 blockTableRecord.AppendEntity(circle);
                 transaction.AddNewlyCreatedDBObject(circle, true);
+                transaction.Commit();
+            }
+
+            return selectedPoint;
+        }
+
+        private static Point3d CreateEllipse(
+            Editor ed,
+            Point3d selectedPoint,
+            Dictionary<string, Dictionary<string, object>> objData
+        )
+        {
+            var ellipseData = objData["ellipse"];
+            var ellipse = new Ellipse();
+
+            if (!LayerExists(ellipseData["layer"].ToString()))
+            {
+                CreateLayer(ellipseData["layer"].ToString(), 4);
+            }
+
+            ellipse.Layer = ellipseData["layer"].ToString();
+
+            var centerData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
+                ellipseData["center"].ToString()
+            );
+
+            var centerX = Convert.ToDouble(centerData["x"]) + selectedPoint.X;
+            var centerY = Convert.ToDouble(centerData["y"]) + selectedPoint.Y;
+            var centerZ = Convert.ToDouble(centerData["z"]) + selectedPoint.Z;
+            Point3d center = new Point3d(centerX, centerY, centerZ);
+
+            var majorAxisData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
+                ellipseData["majorAxis"].ToString()
+            );
+            Vector3d majorAxis = new Vector3d(
+                majorAxisData["x"],
+                majorAxisData["y"],
+                majorAxisData["z"]
+            );
+
+            double radiusRatio = Convert.ToDouble(ellipseData["radiusRatio"]);
+
+            double startAngle = Convert.ToDouble(ellipseData["startAngle"]);
+            double endAngle = Convert.ToDouble(ellipseData["endAngle"]);
+
+            Vector3d unitNormal = new Vector3d(0, 0, 1);
+
+            ellipse.Set(center, unitNormal, majorAxis, radiusRatio, startAngle, endAngle);
+
+            using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
+            {
+                var blockTable =
+                    transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead)
+                    as BlockTable;
+                var blockTableRecord =
+                    transaction.GetObject(
+                        blockTable[BlockTableRecord.PaperSpace],
+                        OpenMode.ForWrite
+                    ) as BlockTableRecord;
+                blockTableRecord.AppendEntity(ellipse);
+                transaction.AddNewlyCreatedDBObject(ellipse, true);
                 transaction.Commit();
             }
 
@@ -918,8 +983,57 @@ namespace GMEPUtilities
 
             circleData.Add("radius", circle.Radius);
 
-            var encapsulate = new Dictionary<string, object>();
-            encapsulate.Add("circle", circleData);
+            var encapsulate = new Dictionary<string, object> { { "circle", circleData } };
+
+            data.Add(encapsulate);
+
+            return data;
+        }
+
+        public static List<Dictionary<string, object>> HandleEllipse(
+            Autodesk.AutoCAD.DatabaseServices.Ellipse ellipse,
+            List<Dictionary<string, object>> data,
+            Point3d origin
+        )
+        {
+            var ellipseData = new Dictionary<string, object>();
+            ellipseData.Add("layer", ellipse.Layer);
+
+            var center = new Dictionary<string, object>
+            {
+                { "x", ellipse.Center.X - origin.X },
+                { "y", ellipse.Center.Y - origin.Y },
+                { "z", ellipse.Center.Z - origin.Z }
+            };
+            ellipseData.Add("center", center);
+
+            ellipseData.Add("majorRadius", ellipse.MajorRadius);
+            ellipseData.Add("minorRadius", ellipse.MinorRadius);
+
+            var majorAxis = new Dictionary<string, object>
+            {
+                { "x", ellipse.MajorAxis.X },
+                { "y", ellipse.MajorAxis.Y },
+                { "z", ellipse.MajorAxis.Z }
+            };
+
+            var minorAxis = new Dictionary<string, object>
+            {
+                { "x", ellipse.MinorAxis.X },
+                { "y", ellipse.MinorAxis.Y },
+                { "z", ellipse.MinorAxis.Z }
+            };
+
+            ellipseData.Add("majorAxis", majorAxis);
+            ellipseData.Add("minorAxis", minorAxis);
+
+            var startAngle = ellipse.StartAngle;
+            var endAngle = ellipse.EndAngle;
+
+            ellipseData.Add("startAngle", startAngle);
+            ellipseData.Add("endAngle", endAngle);
+
+            var encapsulate = new Dictionary<string, object> { { "ellipse", ellipseData } };
 
             data.Add(encapsulate);
 

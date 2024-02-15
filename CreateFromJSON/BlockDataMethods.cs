@@ -357,7 +357,7 @@ namespace GMEPUtilities
       return selectedPoint;
     }
 
-    private static void CreateLayer(string layerName, short colorIndex)
+    public static void CreateLayer(string layerName, short colorIndex)
     {
       if (layerName.Contains("SYM"))
       {
@@ -396,7 +396,7 @@ namespace GMEPUtilities
       }
     }
 
-    private static bool LayerExists(string layerName)
+    public static bool LayerExists(string layerName)
     {
       using (
           var transaction =

@@ -637,7 +637,7 @@ namespace GMEPUtilities
       }
     }
 
-    public static void CreateLineInPaperspace(Point3d start, Point3d end)
+    public static void CreateHiddenLineInPaperspace(Point3d start, Point3d end)
     {
       Document acDoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
       Database acCurDb = acDoc.Database;
@@ -657,7 +657,13 @@ namespace GMEPUtilities
             CreateLayer("E-CONDUIT", 4);
           }
 
+          if (!LinetypeExists("HIDDEN"))
+          {
+            CreateLinetype("HIDDEN");
+          }
+
           acLine.Layer = "E-CONDUIT";
+          acLine.Linetype = "HIDDEN";
 
           acLine.SetDatabaseDefaults();
           acBlkTblRec.AppendEntity(acLine);

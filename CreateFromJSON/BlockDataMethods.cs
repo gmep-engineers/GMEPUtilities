@@ -15,6 +15,180 @@ namespace GMEPUtilities
 {
   public class BlockDataMethods
   {
+    public static void CreateFilledCircleInPaperSpace(Point3d center, double radius)
+    {
+      Document acDoc = Autodesk
+          .AutoCAD
+          .ApplicationServices
+          .Application
+          .DocumentManager
+          .MdiActiveDocument;
+      Database acCurDb = acDoc.Database;
+
+      using (Transaction acTrans = acCurDb.TransactionManager.StartTransaction())
+      {
+        BlockTable acBlkTbl;
+        BlockTableRecord acBlkTblRec;
+
+        acBlkTbl = acTrans.GetObject(acCurDb.BlockTableId, OpenMode.ForRead) as BlockTable;
+        acBlkTblRec =
+            acTrans.GetObject(acBlkTbl[BlockTableRecord.PaperSpace], OpenMode.ForWrite)
+            as BlockTableRecord;
+
+        // Create a circle
+        using (Circle acCircle = new Circle())
+        {
+          acCircle.Center = center;
+          acCircle.Radius = radius;
+
+          if (!LayerExists("E-CONDUIT"))
+          {
+            CreateLayer("E-CONDUIT", 4);
+          }
+
+          acCircle.Layer = "E-CONDUIT";
+
+          acCircle.SetDatabaseDefaults();
+          acBlkTblRec.AppendEntity(acCircle);
+          acTrans.AddNewlyCreatedDBObject(acCircle, true);
+
+          using (Hatch acHatch = new Hatch())
+          {
+            acBlkTblRec.AppendEntity(acHatch);
+            acTrans.AddNewlyCreatedDBObject(acHatch, true);
+            acHatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+            acHatch.Associative = true;
+            acHatch.Layer = "E-CONDUIT";
+            acHatch.AppendLoop(
+                HatchLoopTypes.Outermost,
+                new ObjectIdCollection() { acCircle.ObjectId }
+            );
+            acHatch.EvaluateHatch(true);
+          }
+        }
+
+        acTrans.Commit();
+      }
+    }
+
+    public static void CreateHiddenLineInPaperspace(Point3d start, Point3d end, Editor ed)
+    {
+      var line = new Line();
+
+      if (!LayerExists("E-CONDUIT"))
+      {
+        CreateLayer("E-CONDUIT", 4);
+      }
+
+      if (!LinetypeExists("HIDDEN"))
+      {
+        CreateLinetype("HIDDEN");
+      }
+
+      line.Layer = "E-CONDUIT";
+      line.Linetype = "HIDDEN";
+
+      line.StartPoint = start;
+      line.EndPoint = end;
+
+      using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
+      {
+        var blockTable = transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
+        var blockTableRecord = transaction.GetObject(blockTable[BlockTableRecord.PaperSpace], OpenMode.ForWrite) as BlockTableRecord;
+        blockTableRecord.AppendEntity(line);
+        transaction.AddNewlyCreatedDBObject(line, true);
+        transaction.Commit();
+      }
+    }
+
+    private static Point3d CreateLine(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
+    {
+      var lineData = objData["line"] as Dictionary<string, object>;
+      var line = new Line();
+
+      if (!LayerExists(lineData["layer"].ToString()))
+      {
+        CreateLayer(lineData["layer"].ToString(), 4);
+      }
+
+      line.Layer = lineData["layer"].ToString();
+
+      if (lineData.ContainsKey("linetype"))
+      {
+        if (!LinetypeExists(lineData["linetype"].ToString()))
+        {
+          CreateLinetype(lineData["linetype"].ToString());
+        }
+
+        line.Linetype = lineData["linetype"].ToString();
+      }
+
+      var startPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(lineData["startPoint"].ToString());
+
+      var startPtX = Convert.ToDouble(startPointData["x"]) + selectedPoint.X;
+      var startPtY = Convert.ToDouble(startPointData["y"]) + selectedPoint.Y;
+      var startPtZ = Convert.ToDouble(startPointData["z"]) + selectedPoint.Z;
+      line.StartPoint = new Point3d(startPtX, startPtY, startPtZ);
+
+      var endPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(lineData["endPoint"].ToString());
+
+      var endPtX = Convert.ToDouble(endPointData["x"]) + selectedPoint.X;
+      var endPtY = Convert.ToDouble(endPointData["y"]) + selectedPoint.Y;
+      var endPtZ = Convert.ToDouble(endPointData["z"]) + selectedPoint.Z;
+      line.EndPoint = new Point3d(endPtX, endPtY, endPtZ);
+
+      // Add line to the drawing
+      using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
+      {
+        var blockTable = transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
+        var blockTableRecord = transaction.GetObject(blockTable[BlockTableRecord.PaperSpace], OpenMode.ForWrite) as BlockTableRecord;
+        blockTableRecord.AppendEntity(line);
+        transaction.AddNewlyCreatedDBObject(line, true);
+        transaction.Commit();
+      }
+
+      return selectedPoint;
+    }
+
+    public static void CreateLayer(string layerName, short colorIndex)
+    {
+      if (layerName.Contains("SYM"))
+      {
+        colorIndex = 6;
+      }
+
+      if (layerName.Contains("Inverter"))
+      {
+        colorIndex = 2;
+      }
+
+      using (
+          var transaction =
+              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
+      )
+      {
+        var layerTable =
+            transaction.GetObject(
+                HostApplicationServices.WorkingDatabase.LayerTableId,
+                OpenMode.ForRead
+            ) as LayerTable;
+
+        if (!layerTable.Has(layerName))
+        {
+          var layerTableRecord = new LayerTableRecord();
+          layerTableRecord.Name = layerName;
+          layerTableRecord.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
+          layerTableRecord.LineWeight = LineWeight.LineWeight050;
+          layerTableRecord.IsPlottable = true;
+
+          layerTable.UpgradeOpen();
+          layerTable.Add(layerTableRecord);
+          transaction.AddNewlyCreatedDBObject(layerTableRecord, true);
+          transaction.Commit();
+        }
+      }
+    }
+
     public static void CreateObjectGivenData(List<Dictionary<string, Dictionary<string, object>>> data, Editor ed, Point3d selectedPoint)
     {
       foreach (var objData in data)
@@ -54,6 +228,43 @@ namespace GMEPUtilities
           default:
             break;
         }
+      }
+    }
+
+    public static List<Dictionary<string, Dictionary<string, object>>> GetData(string path)
+    {
+      var dllPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+      var jsonPath = Path.Combine(dllPath, path);
+      var json = File.ReadAllText(jsonPath);
+
+      return JArray
+          .Parse(json)
+          .ToObject<List<Dictionary<string, Dictionary<string, object>>>>();
+    }
+
+    public static string GetUnparsedJSONData(string path)
+    {
+      var dllPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+      var jsonPath = Path.Combine(dllPath, path);
+      var json = File.ReadAllText(jsonPath);
+
+      return json;
+    }
+
+    public static bool LayerExists(string layerName)
+    {
+      using (
+          var transaction =
+              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
+      )
+      {
+        var layerTable =
+            transaction.GetObject(
+                HostApplicationServices.WorkingDatabase.LayerTableId,
+                OpenMode.ForRead
+            ) as LayerTable;
+
+        return layerTable.Has(layerName);
       }
     }
 
@@ -116,83 +327,6 @@ namespace GMEPUtilities
       }
 
       return selectedPoint;
-    }
-
-    private static Point3d CreateLine(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
-    {
-      var lineData = objData["line"] as Dictionary<string, object>;
-      var line = new Line();
-
-      if (!LayerExists(lineData["layer"].ToString()))
-      {
-        CreateLayer(lineData["layer"].ToString(), 4);
-      }
-
-      line.Layer = lineData["layer"].ToString();
-
-      if (lineData.ContainsKey("linetype"))
-      {
-        if (!LinetypeExists(lineData["linetype"].ToString()))
-        {
-          CreateLinetype(lineData["linetype"].ToString());
-        }
-
-        line.Linetype = lineData["linetype"].ToString();
-      }
-
-      var startPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
-          lineData["startPoint"].ToString()
-      );
-
-      var startPtX = Convert.ToDouble(startPointData["x"]) + selectedPoint.X;
-      var startPtY = Convert.ToDouble(startPointData["y"]) + selectedPoint.Y;
-      var startPtZ = Convert.ToDouble(startPointData["z"]) + selectedPoint.Z;
-      line.StartPoint = new Point3d(startPtX, startPtY, startPtZ);
-
-      var endPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
-          lineData["endPoint"].ToString()
-      );
-
-      var endPtX = Convert.ToDouble(endPointData["x"]) + selectedPoint.X;
-      var endPtY = Convert.ToDouble(endPointData["y"]) + selectedPoint.Y;
-      var endPtZ = Convert.ToDouble(endPointData["z"]) + selectedPoint.Z;
-      line.EndPoint = new Point3d(endPtX, endPtY, endPtZ);
-
-      // Add line to the drawing
-      using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
-      {
-        var blockTable =
-            transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead)
-            as BlockTable;
-        var blockTableRecord =
-            transaction.GetObject(
-                blockTable[BlockTableRecord.PaperSpace],
-                OpenMode.ForWrite
-            ) as BlockTableRecord;
-        blockTableRecord.AppendEntity(line);
-        transaction.AddNewlyCreatedDBObject(line, true);
-        transaction.Commit();
-      }
-
-      return selectedPoint;
-    }
-
-    private static void SetMTextStyleByName(MText mtext, string styleName)
-    {
-      Database db = HostApplicationServices.WorkingDatabase;
-      using (Transaction tr = db.TransactionManager.StartTransaction())
-      {
-        TextStyleTable textStyleTable =
-            tr.GetObject(db.TextStyleTableId, OpenMode.ForRead) as TextStyleTable;
-        if (textStyleTable.Has(styleName))
-        {
-          TextStyleTableRecord textStyle =
-              tr.GetObject(textStyleTable[styleName], OpenMode.ForRead)
-              as TextStyleTableRecord;
-          mtext.TextStyleId = textStyle.ObjectId;
-        }
-        tr.Commit();
-      }
     }
 
     private static Point3d CreateCircle(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
@@ -297,6 +431,34 @@ namespace GMEPUtilities
       return selectedPoint;
     }
 
+    private static void CreateLinetype(string linetypeName)
+    {
+      Document acDoc = Autodesk
+          .AutoCAD
+          .ApplicationServices
+          .Application
+          .DocumentManager
+          .MdiActiveDocument;
+      Database acCurDb = acDoc.Database;
+      using (
+          var transaction =
+              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
+      )
+      {
+        var linetypeTable =
+            transaction.GetObject(
+                HostApplicationServices.WorkingDatabase.LinetypeTableId,
+                OpenMode.ForRead
+            ) as LinetypeTable;
+
+        if (!linetypeTable.Has(linetypeName))
+        {
+          acCurDb.LoadLineTypeFile(linetypeName, "acad.lin");
+          transaction.Commit();
+        }
+      }
+    }
+
     private static Point3d CreateMText(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
     {
       var mtextData = objData["mtext"] as Dictionary<string, object>;
@@ -355,107 +517,6 @@ namespace GMEPUtilities
       }
 
       return selectedPoint;
-    }
-
-    public static void CreateLayer(string layerName, short colorIndex)
-    {
-      if (layerName.Contains("SYM"))
-      {
-        colorIndex = 6;
-      }
-
-      if (layerName.Contains("Inverter"))
-      {
-        colorIndex = 2;
-      }
-
-      using (
-          var transaction =
-              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
-      )
-      {
-        var layerTable =
-            transaction.GetObject(
-                HostApplicationServices.WorkingDatabase.LayerTableId,
-                OpenMode.ForRead
-            ) as LayerTable;
-
-        if (!layerTable.Has(layerName))
-        {
-          var layerTableRecord = new LayerTableRecord();
-          layerTableRecord.Name = layerName;
-          layerTableRecord.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
-          layerTableRecord.LineWeight = LineWeight.LineWeight050;
-          layerTableRecord.IsPlottable = true;
-
-          layerTable.UpgradeOpen();
-          layerTable.Add(layerTableRecord);
-          transaction.AddNewlyCreatedDBObject(layerTableRecord, true);
-          transaction.Commit();
-        }
-      }
-    }
-
-    public static bool LayerExists(string layerName)
-    {
-      using (
-          var transaction =
-              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
-      )
-      {
-        var layerTable =
-            transaction.GetObject(
-                HostApplicationServices.WorkingDatabase.LayerTableId,
-                OpenMode.ForRead
-            ) as LayerTable;
-
-        return layerTable.Has(layerName);
-      }
-    }
-
-    private static void CreateLinetype(string linetypeName)
-    {
-      Document acDoc = Autodesk
-          .AutoCAD
-          .ApplicationServices
-          .Application
-          .DocumentManager
-          .MdiActiveDocument;
-      Database acCurDb = acDoc.Database;
-      using (
-          var transaction =
-              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
-      )
-      {
-        var linetypeTable =
-            transaction.GetObject(
-                HostApplicationServices.WorkingDatabase.LinetypeTableId,
-                OpenMode.ForRead
-            ) as LinetypeTable;
-
-        if (!linetypeTable.Has(linetypeName))
-        {
-          acCurDb.LoadLineTypeFile(linetypeName, "acad.lin");
-          transaction.Commit();
-        }
-      }
-    }
-
-    private static bool LinetypeExists(string linetypeName)
-    {
-      using (
-          var transaction =
-              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
-      )
-      {
-        var linetypeTable =
-            transaction.GetObject(
-                HostApplicationServices.WorkingDatabase.LinetypeTableId,
-                OpenMode.ForRead
-            ) as LinetypeTable;
-
-        return linetypeTable.Has(linetypeName);
-      }
     }
 
     private static Point3d CreatePolyline(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
@@ -561,114 +622,38 @@ namespace GMEPUtilities
       return selectedPoint;
     }
 
-    public static List<Dictionary<string, Dictionary<string, object>>> GetData(string path)
+    private static bool LinetypeExists(string linetypeName)
     {
-      var dllPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-      var jsonPath = Path.Combine(dllPath, path);
-      var json = File.ReadAllText(jsonPath);
-
-      return JArray
-          .Parse(json)
-          .ToObject<List<Dictionary<string, Dictionary<string, object>>>>();
-    }
-
-    public static string GetUnparsedJSONData(string path)
-    {
-      var dllPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-      var jsonPath = Path.Combine(dllPath, path);
-      var json = File.ReadAllText(jsonPath);
-
-      return json;
-    }
-
-    public static void CreateFilledCircleInPaperSpace(Point3d center, double radius)
-    {
-      Document acDoc = Autodesk
-          .AutoCAD
-          .ApplicationServices
-          .Application
-          .DocumentManager
-          .MdiActiveDocument;
-      Database acCurDb = acDoc.Database;
-
-      using (Transaction acTrans = acCurDb.TransactionManager.StartTransaction())
+      using (
+          var transaction =
+              HostApplicationServices.WorkingDatabase.TransactionManager.StartTransaction()
+      )
       {
-        BlockTable acBlkTbl;
-        BlockTableRecord acBlkTblRec;
+        var linetypeTable =
+            transaction.GetObject(
+                HostApplicationServices.WorkingDatabase.LinetypeTableId,
+                OpenMode.ForRead
+            ) as LinetypeTable;
 
-        acBlkTbl = acTrans.GetObject(acCurDb.BlockTableId, OpenMode.ForRead) as BlockTable;
-        acBlkTblRec =
-            acTrans.GetObject(acBlkTbl[BlockTableRecord.PaperSpace], OpenMode.ForWrite)
-            as BlockTableRecord;
-
-        // Create a circle
-        using (Circle acCircle = new Circle())
-        {
-          acCircle.Center = center;
-          acCircle.Radius = radius;
-
-          if (!LayerExists("E-CONDUIT"))
-          {
-            CreateLayer("E-CONDUIT", 4);
-          }
-
-          acCircle.Layer = "E-CONDUIT";
-
-          acCircle.SetDatabaseDefaults();
-          acBlkTblRec.AppendEntity(acCircle);
-          acTrans.AddNewlyCreatedDBObject(acCircle, true);
-
-          using (Hatch acHatch = new Hatch())
-          {
-            acBlkTblRec.AppendEntity(acHatch);
-            acTrans.AddNewlyCreatedDBObject(acHatch, true);
-            acHatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            acHatch.Associative = true;
-            acHatch.Layer = "E-CONDUIT";
-            acHatch.AppendLoop(
-                HatchLoopTypes.Outermost,
-                new ObjectIdCollection() { acCircle.ObjectId }
-            );
-            acHatch.EvaluateHatch(true);
-          }
-        }
-
-        acTrans.Commit();
+        return linetypeTable.Has(linetypeName);
       }
     }
 
-    public static void CreateHiddenLineInPaperspace(Point3d start, Point3d end)
+    private static void SetMTextStyleByName(MText mtext, string styleName)
     {
-      Document acDoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-      Database acCurDb = acDoc.Database;
-
-      using (Transaction acTrans = acCurDb.TransactionManager.StartTransaction())
+      Database db = HostApplicationServices.WorkingDatabase;
+      using (Transaction tr = db.TransactionManager.StartTransaction())
       {
-        BlockTable acBlkTbl;
-        BlockTableRecord acBlkTblRec;
-
-        acBlkTbl = acTrans.GetObject(acCurDb.BlockTableId, OpenMode.ForRead) as BlockTable;
-        acBlkTblRec = acTrans.GetObject(acBlkTbl[BlockTableRecord.PaperSpace], OpenMode.ForWrite) as BlockTableRecord;
-
-        using (Line acLine = new Line(start, end))
+        TextStyleTable textStyleTable =
+            tr.GetObject(db.TextStyleTableId, OpenMode.ForRead) as TextStyleTable;
+        if (textStyleTable.Has(styleName))
         {
-          if (!LayerExists("E-CONDUIT"))
-          {
-            CreateLayer("E-CONDUIT", 4);
-          }
-
-          if (!LinetypeExists("HIDDEN"))
-          {
-            CreateLinetype("HIDDEN");
-          }
-
-          acLine.Layer = "E-CONDUIT";
-          acLine.Linetype = "HIDDEN";
-
-          acLine.SetDatabaseDefaults();
-          acBlkTblRec.AppendEntity(acLine);
-          acTrans.AddNewlyCreatedDBObject(acLine, true);
+          TextStyleTableRecord textStyle =
+              tr.GetObject(textStyleTable[styleName], OpenMode.ForRead)
+              as TextStyleTableRecord;
+          mtext.TextStyleId = textStyle.ObjectId;
         }
+        tr.Commit();
       }
     }
   }
@@ -686,6 +671,71 @@ namespace GMEPUtilities
           .Editor;
       PromptPointOptions pointOptions = new PromptPointOptions("Select a point: ");
       pointResult = ed.GetPoint(pointOptions);
+    }
+
+    public static bool IsInLayout()
+    {
+      return !IsInModel();
+    }
+
+    public static bool IsInLayoutPaper()
+    {
+      Autodesk.AutoCAD.ApplicationServices.Document doc = Autodesk
+          .AutoCAD
+          .ApplicationServices
+          .Core
+          .Application
+          .DocumentManager
+          .MdiActiveDocument;
+      Database db = doc.Database;
+      Editor ed = doc.Editor;
+
+      if (db.TileMode)
+        return false;
+      else
+      {
+        if (db.PaperSpaceVportId == ObjectId.Null)
+          return false;
+        else if (ed.CurrentViewportObjectId == ObjectId.Null)
+          return false;
+        else if (ed.CurrentViewportObjectId == db.PaperSpaceVportId)
+          return true;
+        else
+          return false;
+      }
+    }
+
+    public static bool IsInModel()
+    {
+      if (
+          Autodesk
+              .AutoCAD
+              .ApplicationServices
+              .Core
+              .Application
+              .DocumentManager
+              .MdiActiveDocument
+              .Database
+              .TileMode
+      )
+        return true;
+      else
+        return false;
+    }
+
+    public static void PostDataToAutoCADCommandLine(object data)
+    {
+      var ed = Autodesk
+          .AutoCAD
+          .ApplicationServices
+          .Application
+          .DocumentManager
+          .MdiActiveDocument
+          .Editor;
+
+      var json = Newtonsoft.Json.JsonConvert.SerializeObject(data, Newtonsoft.Json.Formatting.Indented);
+
+      ed.WriteMessage($"\n{json}");
     }
 
     public static void SaveDataToJsonFile(object data, string fileName)
@@ -747,100 +797,10 @@ namespace GMEPUtilities
       );
       File.WriteAllText(filePath, json);
     }
-
-    public static void PostDataToAutoCADCommandLine(object data)
-    {
-      var ed = Autodesk
-          .AutoCAD
-          .ApplicationServices
-          .Application
-          .DocumentManager
-          .MdiActiveDocument
-          .Editor;
-
-      var json = Newtonsoft.Json.JsonConvert.SerializeObject(data, Newtonsoft.Json.Formatting.Indented);
-
-      ed.WriteMessage($"\n{json}");
-    }
-
-    public static bool IsInModel()
-    {
-      if (
-          Autodesk
-              .AutoCAD
-              .ApplicationServices
-              .Core
-              .Application
-              .DocumentManager
-              .MdiActiveDocument
-              .Database
-              .TileMode
-      )
-        return true;
-      else
-        return false;
-    }
-
-    public static bool IsInLayout()
-    {
-      return !IsInModel();
-    }
-
-    public static bool IsInLayoutPaper()
-    {
-      Autodesk.AutoCAD.ApplicationServices.Document doc = Autodesk
-          .AutoCAD
-          .ApplicationServices
-          .Core
-          .Application
-          .DocumentManager
-          .MdiActiveDocument;
-      Database db = doc.Database;
-      Editor ed = doc.Editor;
-
-      if (db.TileMode)
-        return false;
-      else
-      {
-        if (db.PaperSpaceVportId == ObjectId.Null)
-          return false;
-        else if (ed.CurrentViewportObjectId == ObjectId.Null)
-          return false;
-        else if (ed.CurrentViewportObjectId == db.PaperSpaceVportId)
-          return true;
-        else
-          return false;
-      }
-    }
   }
 
   public class RetrieveObjectData
   {
-    public static List<Dictionary<string, object>> HandleSolid(Solid solid, List<Dictionary<string, object>> data, Point3d origin)
-    {
-      var solidData = new Dictionary<string, object> { { "layer", solid.Layer } };
-
-      var vertices = new List<object>();
-      for (short i = 0; i < 4; i++)
-      {
-        var vertex = new Dictionary<string, object>
-                {
-                    { "x", solid.GetPointAt(i).X - origin.X },
-                    { "y", solid.GetPointAt(i).Y - origin.Y },
-                    { "z", solid.GetPointAt(i).Z - origin.Z }
-                };
-        vertices.Add(vertex);
-      }
-
-      solidData.Add("vertices", vertices);
-
-      var encapsulate = new Dictionary<string, object> { { "solid", solidData } };
-
-      data.Add(encapsulate);
-
-      return data;
-    }
-
     public static List<Dictionary<string, object>> HandleArc(Arc arc, List<Dictionary<string, object>> data, Point3d origin)
     {
       var arcData = new Dictionary<string, object> { { "layer", arc.Layer } };
@@ -862,101 +822,6 @@ namespace GMEPUtilities
       arcData.Add("endPoint", arc.EndPoint);
 
       var encapsulate = new Dictionary<string, object> { { "arc", arcData } };
-
-      data.Add(encapsulate);
-
-      return data;
-    }
-
-    public static List<Dictionary<string, object>> HandlePolyline(Autodesk.AutoCAD.DatabaseServices.Polyline polyline, List<Dictionary<string, object>> data, Point3d origin)
-    {
-      var polylineData = new Dictionary<string, object>();
-      polylineData.Add("layer", polyline.Layer);
-
-      var vertices = new List<object>();
-      for (int i = 0; i < polyline.NumberOfVertices; i++)
-      {
-        var vertex = new Dictionary<string, object>
-                {
-                    { "x", polyline.GetPoint3dAt(i).X - origin.X },
-                    { "y", polyline.GetPoint3dAt(i).Y - origin.Y },
-                    { "z", polyline.GetPoint3dAt(i).Z - origin.Z }
-                };
-        vertices.Add(vertex);
-      }
-
-      polylineData.Add("vertices", vertices);
-
-      polylineData.Add("linetype", polyline.Linetype);
-
-      if (polyline.Closed)
-      {
-        polylineData.Add("isClosed", true);
-      }
-      else
-      {
-        polylineData.Add("isClosed", false);
-      }
-
-      var encapsulate = new Dictionary<string, object>();
-      encapsulate.Add("polyline", polylineData);
-
-      data.Add(encapsulate);
-
-      return data;
-    }
-
-    public static List<Dictionary<string, object>> HandleLine(Autodesk.AutoCAD.DatabaseServices.Line line, List<Dictionary<string, object>> data, Point3d origin)
-    {
-      var lineData = new Dictionary<string, object>();
-      lineData.Add("layer", line.Layer);
-
-      var startPoint = new Dictionary<string, object>
-            {
-                { "x", line.StartPoint.X - origin.X },
-                { "y", line.StartPoint.Y - origin.Y },
-                { "z", line.StartPoint.Z - origin.Z }
-            };
-      lineData.Add("startPoint", startPoint);
-
-      var endPoint = new Dictionary<string, object>
-            {
-                { "x", line.EndPoint.X - origin.X },
-                { "y", line.EndPoint.Y - origin.Y },
-                { "z", line.EndPoint.Z - origin.Z }
-            };
-      lineData.Add("endPoint", endPoint);
-
-      lineData.Add("linetype", line.Linetype);
-
-      var encapsulate = new Dictionary<string, object>();
-      encapsulate.Add("line", lineData);
-
-      data.Add(encapsulate);
-
-      return data;
-    }
-
-    public static List<Dictionary<string, object>> HandleMText(Autodesk.AutoCAD.DatabaseServices.MText mtext, List<Dictionary<string, object>> data, Point3d origin)
-    {
-      var mtextData = new Dictionary<string, object>();
-      mtextData.Add("layer", mtext.Layer);
-      mtextData.Add("style", mtext.TextStyleName);
-      mtextData.Add("justification", mtext.Attachment.ToString());
-      mtextData.Add("text", mtext.Contents);
-      mtextData.Add("height", mtext.TextHeight);
-      mtextData.Add("lineSpaceDistance", mtext.LineSpaceDistance);
-
-      var location = new Dictionary<string, object>
-            {
-                { "x", mtext.Location.X - origin.X },
-                { "y", mtext.Location.Y - origin.Y },
-                { "z", mtext.Location.Z - origin.Z }
-            };
-      mtextData.Add("location", location);
-
-      var encapsulate = new Dictionary<string, object>();
-      encapsulate.Add("mtext", mtextData);
 
       data.Add(encapsulate);
 
@@ -1025,6 +890,126 @@ namespace GMEPUtilities
       ellipseData.Add("endAngle", endAngle);
 
       var encapsulate = new Dictionary<string, object> { { "ellipse", ellipseData } };
+
+      data.Add(encapsulate);
+
+      return data;
+    }
+
+    public static List<Dictionary<string, object>> HandleLine(Autodesk.AutoCAD.DatabaseServices.Line line, List<Dictionary<string, object>> data, Point3d origin)
+    {
+      var lineData = new Dictionary<string, object>();
+      lineData.Add("layer", line.Layer);
+
+      var startPoint = new Dictionary<string, object>
+            {
+                { "x", line.StartPoint.X - origin.X },
+                { "y", line.StartPoint.Y - origin.Y },
+                { "z", line.StartPoint.Z - origin.Z }
+            };
+      lineData.Add("startPoint", startPoint);
+
+      var endPoint = new Dictionary<string, object>
+            {
+                { "x", line.EndPoint.X - origin.X },
+                { "y", line.EndPoint.Y - origin.Y },
+                { "z", line.EndPoint.Z - origin.Z }
+            };
+      lineData.Add("endPoint", endPoint);
+
+      lineData.Add("linetype", line.Linetype);
+
+      var encapsulate = new Dictionary<string, object>();
+      encapsulate.Add("line", lineData);
+
+      data.Add(encapsulate);
+
+      return data;
+    }
+
+    public static List<Dictionary<string, object>> HandleMText(Autodesk.AutoCAD.DatabaseServices.MText mtext, List<Dictionary<string, object>> data, Point3d origin)
+    {
+      var mtextData = new Dictionary<string, object>();
+      mtextData.Add("layer", mtext.Layer);
+      mtextData.Add("style", mtext.TextStyleName);
+      mtextData.Add("justification", mtext.Attachment.ToString());
+      mtextData.Add("text", mtext.Contents);
+      mtextData.Add("height", mtext.TextHeight);
+      mtextData.Add("lineSpaceDistance", mtext.LineSpaceDistance);
+
+      var location = new Dictionary<string, object>
+            {
+                { "x", mtext.Location.X - origin.X },
+                { "y", mtext.Location.Y - origin.Y },
+                { "z", mtext.Location.Z - origin.Z }
+            };
+      mtextData.Add("location", location);
+
+      var encapsulate = new Dictionary<string, object>();
+      encapsulate.Add("mtext", mtextData);
+
+      data.Add(encapsulate);
+
+      return data;
+    }
+
+    public static List<Dictionary<string, object>> HandlePolyline(Autodesk.AutoCAD.DatabaseServices.Polyline polyline, List<Dictionary<string, object>> data, Point3d origin)
+    {
+      var polylineData = new Dictionary<string, object>();
+      polylineData.Add("layer", polyline.Layer);
+
+      var vertices = new List<object>();
+      for (int i = 0; i < polyline.NumberOfVertices; i++)
+      {
+        var vertex = new Dictionary<string, object>
+                {
+                    { "x", polyline.GetPoint3dAt(i).X - origin.X },
+                    { "y", polyline.GetPoint3dAt(i).Y - origin.Y },
+                    { "z", polyline.GetPoint3dAt(i).Z - origin.Z }
+                };
+        vertices.Add(vertex);
+      }
+
+      polylineData.Add("vertices", vertices);
+
+      polylineData.Add("linetype", polyline.Linetype);
+
+      if (polyline.Closed)
+      {
+        polylineData.Add("isClosed", true);
+      }
+      else
+      {
+        polylineData.Add("isClosed", false);
+      }
+
+      var encapsulate = new Dictionary<string, object>();
+      encapsulate.Add("polyline", polylineData);
+
+      data.Add(encapsulate);
+
+      return data;
+    }
+
+    public static List<Dictionary<string, object>> HandleSolid(Solid solid, List<Dictionary<string, object>> data, Point3d origin)
+    {
+      var solidData = new Dictionary<string, object> { { "layer", solid.Layer } };
+
+      var vertices = new List<object>();
+      for (short i = 0; i < 4; i++)
+      {
+        var vertex = new Dictionary<string, object>
+                {
+                    { "x", solid.GetPointAt(i).X - origin.X },
+                    { "y", solid.GetPointAt(i).Y - origin.Y },
+                    { "z", solid.GetPointAt(i).Z - origin.Z }
+                };
+        vertices.Add(vertex);
+      }
+
+      solidData.Add("vertices", vertices);
+
+      var encapsulate = new Dictionary<string, object> { { "solid", solidData } };
 
       data.Add(encapsulate);
 

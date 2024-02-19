@@ -515,11 +515,7 @@ namespace GMEPUtilities
       return selectedPoint;
     }
 
-    private static Point3d CreateSolid(
-        Editor ed,
-        Point3d selectedPoint,
-        Dictionary<string, Dictionary<string, object>> objData
-    )
+    private static Point3d CreateSolid(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)
     {
       var solidData = objData["solid"];
       var solid = new Solid();
@@ -638,6 +634,35 @@ namespace GMEPUtilities
         }
 
         acTrans.Commit();
+      }
+    }
+
+    public static void CreateLineInPaperspace(Point3d start, Point3d end)
+    {
+      Document acDoc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+      Database acCurDb = acDoc.Database;
+
+      using (Transaction acTrans = acCurDb.TransactionManager.StartTransaction())
+      {
+        BlockTable acBlkTbl;
+        BlockTableRecord acBlkTblRec;
+
+        acBlkTbl = acTrans.GetObject(acCurDb.BlockTableId, OpenMode.ForRead) as BlockTable;
+        acBlkTblRec = acTrans.GetObject(acBlkTbl[BlockTableRecord.PaperSpace], OpenMode.ForWrite) as BlockTableRecord;
+
+        using (Line acLine = new Line(start, end))
+        {
+          if (!LayerExists("E-CONDUIT"))
+          {
+            CreateLayer("E-CONDUIT", 4);
+          }
+
+          acLine.Layer = "E-CONDUIT";
+
+          acLine.SetDatabaseDefaults();
+          acBlkTblRec.AppendEntity(acLine);
+          acTrans.AddNewlyCreatedDBObject(acLine, true);
+        }
       }
     }
   }
@@ -785,11 +810,7 @@ namespace GMEPUtilities
 
   public class RetrieveObjectData
   {
-    public static List<Dictionary<string, object>> HandleSolid(
-        Solid solid,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleSolid(Solid solid, List<Dictionary<string, object>> data, Point3d origin)
     {
       var solidData = new Dictionary<string, object> { { "layer", solid.Layer } };
 
@@ -814,11 +835,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandleArc(
-        Arc arc,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleArc(Arc arc, List<Dictionary<string, object>> data, Point3d origin)
     {
       var arcData = new Dictionary<string, object> { { "layer", arc.Layer } };
 
@@ -845,11 +862,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandlePolyline(
-        Autodesk.AutoCAD.DatabaseServices.Polyline polyline,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandlePolyline(Autodesk.AutoCAD.DatabaseServices.Polyline polyline, List<Dictionary<string, object>> data, Point3d origin)
     {
       var polylineData = new Dictionary<string, object>();
       polylineData.Add("layer", polyline.Layer);
@@ -887,11 +900,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandleLine(
-        Autodesk.AutoCAD.DatabaseServices.Line line,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleLine(Autodesk.AutoCAD.DatabaseServices.Line line, List<Dictionary<string, object>> data, Point3d origin)
     {
       var lineData = new Dictionary<string, object>();
       lineData.Add("layer", line.Layer);
@@ -922,11 +931,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandleMText(
-        Autodesk.AutoCAD.DatabaseServices.MText mtext,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleMText(Autodesk.AutoCAD.DatabaseServices.MText mtext, List<Dictionary<string, object>> data, Point3d origin)
     {
       var mtextData = new Dictionary<string, object>();
       mtextData.Add("layer", mtext.Layer);
@@ -952,11 +957,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandleCircle(
-        Autodesk.AutoCAD.DatabaseServices.Circle circle,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleCircle(Autodesk.AutoCAD.DatabaseServices.Circle circle, List<Dictionary<string, object>> data, Point3d origin)
     {
       var circleData = new Dictionary<string, object>();
       circleData.Add("layer", circle.Layer);
@@ -978,11 +979,7 @@ namespace GMEPUtilities
       return data;
     }
 
-    public static List<Dictionary<string, object>> HandleEllipse(
-        Autodesk.AutoCAD.DatabaseServices.Ellipse ellipse,
-        List<Dictionary<string, object>> data,
-        Point3d origin
-    )
+    public static List<Dictionary<string, object>> HandleEllipse(Autodesk.AutoCAD.DatabaseServices.Ellipse ellipse, List<Dictionary<string, object>> data, Point3d origin)
     {
       var ellipseData = new Dictionary<string, object>();
       ellipseData.Add("layer", ellipse.Layer);

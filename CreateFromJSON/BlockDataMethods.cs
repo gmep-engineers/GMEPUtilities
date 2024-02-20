@@ -305,7 +305,7 @@ namespace GMEPUtilities
       return selectedPoint;
     }
 
-    public void CreateArcBy2Points(Point3d startPoint, Point3d endPoint, bool right)
+    public static void CreateArcBy2Points(Point3d startPoint, Point3d endPoint, bool right)
     {
       Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
       Database db = doc.Database;

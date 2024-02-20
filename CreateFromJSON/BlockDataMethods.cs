@@ -295,14 +295,8 @@ namespace GMEPUtilities
 
       using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
       {
-        var blockTable =
-            transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead)
-            as BlockTable;
-        var blockTableRecord =
-            transaction.GetObject(
-                blockTable[BlockTableRecord.PaperSpace],
-                OpenMode.ForWrite
-            ) as BlockTableRecord;
+        var blockTable = transaction.GetObject(ed.Document.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
+        var blockTableRecord = transaction.GetObject(blockTable[BlockTableRecord.PaperSpace], OpenMode.ForWrite) as BlockTableRecord;
         blockTableRecord.AppendEntity(arc);
         transaction.AddNewlyCreatedDBObject(arc, true);
         transaction.Commit();

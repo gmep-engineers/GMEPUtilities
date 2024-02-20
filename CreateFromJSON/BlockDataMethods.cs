@@ -293,24 +293,6 @@ namespace GMEPUtilities
       arc.StartAngle = Convert.ToDouble(arcData["startAngle"]);
       arc.EndAngle = Convert.ToDouble(arcData["endAngle"]);
 
-      //var startPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
-      //    arcData["startPoint"].ToString()
-      //);
-
-      //var startPtX = Convert.ToDouble(startPointData["X"]) + selectedPoint.X;
-      //var startPtY = Convert.ToDouble(startPointData["Y"]) + selectedPoint.Y;
-      //var startPtZ = Convert.ToDouble(startPointData["Z"]) + selectedPoint.Z;
-      //arc.StartPoint = new Point3d(startPtX, startPtY, startPtZ);
-
-      //var endPointData = JsonConvert.DeserializeObject<Dictionary<string, double>>(
-      //    arcData["endPoint"].ToString()
-      //);
-
-      //var endPtX = Convert.ToDouble(endPointData["X"]) + selectedPoint.X;
-      //var endPtY = Convert.ToDouble(endPointData["Y"]) + selectedPoint.Y;
-      //var endPtZ = Convert.ToDouble(endPointData["Z"]) + selectedPoint.Z;
-      //arc.EndPoint = new Point3d(endPtX, endPtY, endPtZ);
-
       using (var transaction = ed.Document.Database.TransactionManager.StartTransaction())
       {
         var blockTable =
@@ -327,6 +309,62 @@ namespace GMEPUtilities
       }
 
       return selectedPoint;
+    }
+
+    public void CreateArcBy2Points(Point3d startPoint, Point3d endPoint, bool right)
+    {
+      Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+      Database db = doc.Database;
+
+      using (Transaction trans = db.TransactionManager.StartTransaction())
+      {
+        BlockTable bt = (BlockTable)trans.GetObject(db.BlockTableId, OpenMode.ForRead);
+        BlockTableRecord btr = (BlockTableRecord)trans.GetObject(bt[BlockTableRecord.PaperSpace], OpenMode.ForWrite);
+
+        var intermediatePoint = CreateIntermediatePoint(startPoint, endPoint, right);
+        CircularArc3d arc3d = new CircularArc3d(startPoint, intermediatePoint, endPoint);
+
+        Point3d centerPoint = arc3d.Center;
+
+        double startAngle = Math.Atan2(startPoint.Y - centerPoint.Y, startPoint.X - centerPoint.X);
+        double endAngle = Math.Atan2(endPoint.Y - centerPoint.Y, endPoint.X - centerPoint.X);
+        if (!right)
+        {
+          startAngle = Math.Atan2(endPoint.Y - centerPoint.Y, endPoint.X - centerPoint.X);
+          endAngle = Math.Atan2(startPoint.Y - centerPoint.Y, startPoint.X - centerPoint.X);
+        }
+
+        Arc arc = new Arc(arc3d.Center, arc3d.Radius, startAngle, endAngle);
+
+        btr.AppendEntity(arc);
+        trans.AddNewlyCreatedDBObject(arc, true);
+
+        trans.Commit();
+      }
+    }
+
+    private Point3d CreateIntermediatePoint(Point3d startPoint, Point3d endPoint, bool right)
+    {
+      // Calculate the midpoint
+      Point3d midPoint = new Point3d((startPoint.X + endPoint.X) / 2, (startPoint.Y + endPoint.Y) / 2, (startPoint.Z + endPoint.Z) / 2);
+
+      // Create vectors
+      Vector3d startToEnd = endPoint - startPoint;
+      Vector3d up = new Vector3d(0, 0, 1);
+
+      // Calculate the cross product
+      Vector3d crossProduct = startToEnd.CrossProduct(up);
+
+      // If left is true, we want the cross product, otherwise we want the negative of the cross product
+      Vector3d direction = right ? crossProduct : -crossProduct;
+
+      // Normalize the direction vector and scale it to desired length (e.g., a fourth the distance between start and end points)
+      direction = direction.GetNormal() * startToEnd.Length / 4;
+
+      // Calculate the intermediate point
+      Point3d intermediatePoint = midPoint + direction;
+
+      return intermediatePoint;
     }
 
     private static Point3d CreateCircle(Editor ed, Point3d selectedPoint, Dictionary<string, Dictionary<string, object>> objData)

@@ -337,7 +337,7 @@ namespace GMEPUtilities
       }
     }
 
-    private Point3d CreateIntermediatePoint(Point3d startPoint, Point3d endPoint, bool right)
+    private static Point3d CreateIntermediatePoint(Point3d startPoint, Point3d endPoint, bool right)
     {
       // Calculate the midpoint
       Point3d midPoint = new Point3d((startPoint.X + endPoint.X) / 2, (startPoint.Y + endPoint.Y) / 2, (startPoint.Z + endPoint.Z) / 2);
